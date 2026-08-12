@@ -1,0 +1,10 @@
+# SwiftPM 构建产物
+/.build/
+# 组装出的 .app
+/build/
+
+# macOS
+.DS_Store
+
+# Claude Code 本机个人配置（含本地权限等，不宜共享）
+.claude/settings.local.json
