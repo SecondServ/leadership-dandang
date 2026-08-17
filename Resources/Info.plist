@@ -7,9 +7,9 @@
     <key>CFBundleDisplayName</key>
     <string>担当</string>
     <key>CFBundleIdentifier</key>
-    <string>com.sidekick.mac</string>
+    <string>com.leadership.dandang</string>
     <key>CFBundleExecutable</key>
-    <string>Sidekick</string>
+    <string>Leadership</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -28,6 +28,6 @@
     <true/>
 
     <key>NSHumanReadableCopyright</key>
-    <string>担当 (Ownership) — 个人自用工具。</string>
+    <string>担当 (Leadership) — 个人自用工具。</string>
 </dict>
 </plist>

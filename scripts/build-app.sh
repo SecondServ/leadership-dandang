@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-APP_NAME="Sidekick"
+APP_NAME="Leadership"
 CONFIG="${1:-release}"
 
 echo "==> swift build ($CONFIG)"

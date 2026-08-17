@@ -2,19 +2,19 @@
 #
 # 代码签名（BUILD_SPEC §2）。
 #
-# 首选：用一张**固定的自签名代码签名证书**（默认名 "Sidekick Dev"）。它的签名指纹稳定，
+# 首选：用一张**固定的自签名代码签名证书**（默认名 "Leadership Dev"）。它的签名指纹稳定，
 # 重编译后「辅助功能」授权不会掉 —— 这是解决"勾了还一直弹权限"的正解。
 # 回退：找不到该证书时用 ad-hoc（`codesign -s -`）—— 能跑，但每次重编译授权会掉。
 #
 # 建证书方法见 README「固定签名证书」。证书名可用环境变量覆盖：
-#   SIDEKICK_SIGN_IDENTITY="你的证书名" bash scripts/sign-macos.sh
+#   LEADERSHIP_SIGN_IDENTITY="你的证书名" bash scripts/sign-macos.sh
 #
-# 用法：scripts/sign-macos.sh [App 路径]（默认 build/Sidekick.app）
+# 用法：scripts/sign-macos.sh [App 路径]（默认 build/Leadership.app）
 set -euo pipefail
 
-APP_PATH="${1:-build/Sidekick.app}"
-BUNDLE_ID="com.sidekick.mac"                       # 固定 bundle id，须与 Info.plist 一致
-SIGN_IDENTITY="${SIDEKICK_SIGN_IDENTITY:-Sidekick Dev}"
+APP_PATH="${1:-build/Leadership.app}"
+BUNDLE_ID="com.leadership.dandang"                       # 固定 bundle id，须与 Info.plist 一致
+SIGN_IDENTITY="${LEADERSHIP_SIGN_IDENTITY:-Leadership Dev}"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "错误：找不到 App：$APP_PATH" >&2

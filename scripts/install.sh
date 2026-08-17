@@ -20,8 +20,8 @@ fi
 echo "==> 2/4 编译 + 组装 + 签名"
 bash scripts/build-app.sh release
 
-APP="$ROOT/build/Sidekick.app"
-DEST="/Applications/Sidekick.app"
+APP="$ROOT/build/Leadership.app"
+DEST="/Applications/Leadership.app"
 echo "==> 3/4 安装到 /Applications"
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"

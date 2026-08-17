@@ -6,7 +6,7 @@
 # 安全：Key 从 Keychain 读出后只用于请求，**绝不打印**；输出只有模型名。
 set -euo pipefail
 
-KEY="$(security find-generic-password -s com.sidekick.mac -a gemini-api-key -w 2>/dev/null || true)"
+KEY="$(security find-generic-password -s com.leadership.dandang -a gemini-api-key -w 2>/dev/null || true)"
 if [[ -z "$KEY" ]]; then
   echo "没在 Keychain 里找到 API Key。请先在 App 的「设置」里保存。" >&2
   exit 1

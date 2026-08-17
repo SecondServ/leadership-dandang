@@ -5,7 +5,7 @@ import Security
 ///
 /// 安全：本类型不打印 Key 值；对外只暴露存/取/删。
 enum Keychain {
-    private static let service = "com.sidekick.mac"
+    private static let service = "com.leadership.dandang"
 
     /// 各 provider 的 Keychain account。Gemini 沿用旧 account，避免已保存的 Key 丢失。
     private static func account(for provider: AIProvider) -> String {
