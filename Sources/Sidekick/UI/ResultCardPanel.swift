@@ -115,19 +115,23 @@ struct ResultCardView: View {
         case .result(let text):
             VStack(alignment: .leading, spacing: 10) {
                 ScrollView {
-                    Text(text)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(text)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // 「说人话」的注释（潜台词 + 黑话/缩写解释），与正文同区滚动。
+                        if let sub = model.subtext, !sub.isEmpty {
+                            Divider()
+                            Text(sub)
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-                if let sub = model.subtext, !sub.isEmpty {
-                    Text(sub)
-                        .font(.footnote)
-                        .italic()
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 if let note = model.feature.riskNote {
                     Label(note, systemImage: "exclamationmark.triangle")
                         .foregroundColor(.orange)

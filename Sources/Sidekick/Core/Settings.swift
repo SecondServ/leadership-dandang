@@ -2,25 +2,36 @@ import Foundation
 
 /// 全局设置常量（BUILD_SPEC §6）。M0 先用常量，后续里程碑再做成可配置项。
 enum Settings {
-    // 模型档位（可在设置页选择，存 UserDefaults）。
-    // 默认都用已验证可用的 flash，保证开箱不 404；用户刷新后可把强档换成 pro 等。
-    static let defaultFastModel = "gemini-2.5-flash"
-    static let defaultStrongModel = "gemini-2.5-flash"
+    // MARK: - 大模型厂商与模型（可在设置页切换，存 UserDefaults）
 
-    private static let fastModelKey = "fastModel"
-    private static let strongModelKey = "strongModel"
-
-    /// 快档模型（功能 1/2/3/4/5）。
-    static var fastModel: String {
-        get { UserDefaults.standard.string(forKey: fastModelKey) ?? defaultFastModel }
-        set { UserDefaults.standard.set(newValue, forKey: fastModelKey) }
+    /// 当前使用的厂商。默认 Gemini。
+    static var provider: AIProvider {
+        get { AIProvider(rawValue: UserDefaults.standard.string(forKey: "aiProvider") ?? "") ?? .gemini }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "aiProvider") }
     }
 
-    /// 强档模型（功能 6/7）。
-    static var strongModel: String {
-        get { UserDefaults.standard.string(forKey: strongModelKey) ?? defaultStrongModel }
-        set { UserDefaults.standard.set(newValue, forKey: strongModelKey) }
+    /// OpenAI 兼容端点的 Base URL（其它厂商不用）。
+    static func baseURL(for provider: AIProvider) -> String {
+        guard provider.usesBaseURL else { return "" }
+        return UserDefaults.standard.string(forKey: "baseURL.\(provider.rawValue)") ?? provider.defaultBaseURL
     }
+    static func setBaseURL(_ url: String, for provider: AIProvider) {
+        UserDefaults.standard.set(url, forKey: "baseURL.\(provider.rawValue)")
+    }
+
+    /// 某厂商某档位的模型名（每厂商各自记忆）。
+    static func model(_ tier: ModelTier, for provider: AIProvider) -> String {
+        let key = "model.\(tier == .fast ? "fast" : "strong").\(provider.rawValue)"
+        let fallback = tier == .fast ? provider.defaultFastModel : provider.defaultStrongModel
+        return UserDefaults.standard.string(forKey: key) ?? fallback
+    }
+    static func setModel(_ name: String, tier: ModelTier, for provider: AIProvider) {
+        let key = "model.\(tier == .fast ? "fast" : "strong").\(provider.rawValue)"
+        UserDefaults.standard.set(name, forKey: key)
+    }
+
+    /// 当前厂商 + 档位的模型名（供功能流程直接取）。
+    static func model(_ tier: ModelTier) -> String { model(tier, for: provider) }
 
     /// 目标语言（PRD：当前仅"中文"，预留可配置）。
     static let targetLanguage = "中文"
@@ -33,6 +44,21 @@ enum Settings {
 
     /// 全局快捷键展示串（实际注册见 Trigger/HotKey.swift）。
     static let hotKeyDisplay = "⌥⌘P"
+
+    // MARK: - 悬浮条相对选区的偏移（用户拖动后记住）
+
+    /// 悬浮条相对"选区锚点(鼠标抬起点)"的偏移。默认 (8,8) = 光标右上一点。
+    static var barOffset: NSPoint {
+        get {
+            let d = UserDefaults.standard
+            if d.object(forKey: "barOffsetX") == nil { return NSPoint(x: 8, y: 8) }
+            return NSPoint(x: d.double(forKey: "barOffsetX"), y: d.double(forKey: "barOffsetY"))
+        }
+        set {
+            UserDefaults.standard.set(Double(newValue.x), forKey: "barOffsetX")
+            UserDefaults.standard.set(Double(newValue.y), forKey: "barOffsetY")
+        }
+    }
 
     // MARK: - 悬浮条排列（横/竖）
 

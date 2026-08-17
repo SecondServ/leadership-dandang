@@ -19,6 +19,19 @@
 
 ---
 
+## 给别人用（从源码一键安装）
+
+分发给会用终端的人：让对方 `git clone` 本仓库，然后在项目目录里跑一条命令，自动编译并装进 `/Applications`：
+
+```bash
+bash scripts/install.sh
+```
+
+它会：检查 Swift 工具链（没有会提示装 `xcode-select --install`）→ 编译签名 → 拷进 `/Applications` → 打开。之后对方各自：① 授权「辅助功能」；② 在设置里填自己的 API Key。
+
+> 说明：本地编译出来的 App **不带隔离标记**，不会被 Gatekeeper 拦，也不需要 Apple 开发者账号。
+> 若要做成"下载即用、零警告"的 `.dmg` 发给不特定的人，需要 Apple Developer ID + 公证（notarization），是另一套流程。
+
 ## 环境要求
 
 - macOS 13 (Ventura) 或更高。

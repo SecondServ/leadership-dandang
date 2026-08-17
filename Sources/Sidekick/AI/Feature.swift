@@ -27,11 +27,11 @@ enum Feature: String, CaseIterable {
 
     // MARK: - 模型 / 速度
 
-    /// 模型档（BUILD_SPEC §6）。
-    var model: String {
+    /// 模型档位（BUILD_SPEC §6）。实际模型名由 Settings 按当前厂商决定。
+    var tier: ModelTier {
         switch self {
-        case .relevance, .presence: return Settings.strongModel
-        default:                    return Settings.fastModel
+        case .relevance, .presence: return .strong
+        default:                    return .fast
         }
     }
 

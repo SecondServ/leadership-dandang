@@ -41,6 +41,42 @@ enum TextGrabber {
         return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
+    /// 非阻塞地探测"当前是否有选中文本"（划词检测用）。
+    ///
+    /// 与 `grabViaCopyFallback` 不同：用主 runloop 定时轮询（而非 usleep 阻塞），**不冻结界面**——
+    /// 因为它会在很多次鼠标手势后被调用。备份并还原剪贴板。需要「辅助功能」权限。
+    /// 一次只允许一个 Cmd+C 探测进行（避免并发的备份/还原互相打架）。仅在主线程访问。
+    nonisolated(unsafe) private static var isDetecting = false
+
+    static func detectSelection(timeout: TimeInterval = 0.2, completion: @escaping (Bool) -> Void) {
+        if isDetecting { completion(false); return }
+        isDetecting = true
+
+        let pb = NSPasteboard.general
+        let saved = backup(pb)
+        let startCount = pb.changeCount
+
+        postCommandC()
+
+        func finish(_ result: Bool) {
+            restore(pb, from: saved)
+            isDetecting = false
+            completion(result)
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        func poll() {
+            if pb.changeCount != startCount {
+                let text = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                finish(text?.isEmpty == false)
+            } else if Date() >= deadline {
+                finish(false)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: poll)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: poll)
+    }
+
     // MARK: - 剪贴板备份/还原
 
     private struct ItemBackup {

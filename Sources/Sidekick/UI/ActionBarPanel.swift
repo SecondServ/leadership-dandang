@@ -16,6 +16,10 @@ final class ActionBarPanel {
 
     private var panel: NSPanel?
     private var builtVertical = Settings.barVertical
+    private var offset = Settings.barOffset      // 相对选区锚点的偏移（拖动后记住）
+    private var currentAnchor: NSPoint = .zero    // 本次显示对应的选区锚点
+    private var lastProgrammaticOrigin = NSPoint(x: -1_000_000, y: -1_000_000) // 我们自己摆的位置（用于区分用户拖动）
+    private var moveObserver: NSObjectProtocol?
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -25,9 +29,21 @@ final class ActionBarPanel {
             panel?.orderOut(nil)
             panel = nil
         }
+        currentAnchor = screenPoint
         let panel = ensurePanel()
         position(panel, near: screenPoint)
         panel.orderFrontRegardless()
+    }
+
+    /// 用户拖动工具条后：记住它相对选区锚点的新偏移，之后按此偏移出现。
+    private func handleDragEnded() {
+        guard let panel else { return }
+        let newOffset = NSPoint(x: panel.frame.origin.x - currentAnchor.x,
+                                y: panel.frame.origin.y - currentAnchor.y)
+        if abs(newOffset.x - offset.x) > 1 || abs(newOffset.y - offset.y) > 1 {
+            offset = newOffset
+            Settings.barOffset = newOffset
+        }
     }
 
     func hide() {
@@ -50,7 +66,8 @@ final class ActionBarPanel {
             onClose: { [weak self] in
                 self?.hide()
                 self?.onClose?()
-            }
+            },
+            onDragEnded: { [weak self] in self?.handleDragEnded() }
         )
 
         let p = NSPanel(
@@ -70,19 +87,35 @@ final class ActionBarPanel {
         p.hasShadow = true
         p.contentView = content
         p.setContentSize(content.fittingSize)
+
+        // 监听窗口移动：用户拖动后捕获最终位置，记住相对偏移。
+        // 用"与我们程序设定的位置对比"来区分用户拖动 vs 我们自己摆位（避免夹屏/程序移动被误当拖动）。
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: p, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let panel = self.panel else { return }
+                let origin = panel.frame.origin
+                let isOurs = abs(origin.x - self.lastProgrammaticOrigin.x) < 0.5
+                          && abs(origin.y - self.lastProgrammaticOrigin.y) < 0.5
+                if !isOurs { self.handleDragEnded() }
+            }
+        }
+
         panel = p
         return p
     }
 
     private func position(_ panel: NSPanel, near point: NSPoint) {
         let size = panel.frame.size
-        var origin = NSPoint(x: point.x + 8, y: point.y + 8)
+        var origin = NSPoint(x: point.x + offset.x, y: point.y + offset.y)
 
         let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main
         if let vf = screen?.visibleFrame {
             origin.x = min(max(origin.x, vf.minX + 4), vf.maxX - size.width - 4)
             origin.y = min(max(origin.y, vf.minY + 4), vf.maxY - size.height - 4)
         }
+        lastProgrammaticOrigin = origin   // 记住这是"程序摆的"，用户拖动会与之不同
         panel.setFrameOrigin(origin)
     }
 }
@@ -93,6 +126,7 @@ final class ActionBarPanel {
 private final class ActionBarContentView: NSView {
     private let onFeature: (Feature, String?) -> Void
     private let onClose: () -> Void
+    private let onDragEnded: () -> Void
 
     private var clickable: [NSButton] = []                        // 所有可点按钮（拖动 hitTest 时排除）
     private var featureOf: [ObjectIdentifier: Feature] = [:]      // 单功能按钮 → 功能
@@ -100,9 +134,11 @@ private final class ActionBarContentView: NSView {
 
     init(items: [BarItem], vertical: Bool,
          onFeature: @escaping (Feature, String?) -> Void,
-         onClose: @escaping () -> Void) {
+         onClose: @escaping () -> Void,
+         onDragEnded: @escaping () -> Void) {
         self.onFeature = onFeature
         self.onClose = onClose
+        self.onDragEnded = onDragEnded
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -184,6 +220,7 @@ private final class ActionBarContentView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         window?.performDrag(with: event)
+        onDragEnded()   // performDrag 阻塞到拖动结束；此后记住新偏移
     }
 
     @objc private func tapSingle(_ sender: NSButton) {

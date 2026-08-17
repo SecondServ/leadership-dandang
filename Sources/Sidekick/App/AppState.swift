@@ -35,11 +35,12 @@ final class AppState {
             self?.runFeature(feature, variant: variant, anchor: barFrame)
         }
         actionBar.onClose = { [weak self] in self?.setAutoPop(false) }   // 悬浮条 ✕：关掉自动弹条
-        selectionMonitor.onMouseDown = { [weak self] in self?.actionBar.hide() }
+        selectionMonitor.isBarVisible = { [weak self] in self?.actionBar.isVisible ?? false }
         selectionMonitor.onSelectionLikely = { [weak self] point in
             guard let self, Settings.autoPopEnabled else { return }
             self.actionBar.show(at: point)
         }
+        selectionMonitor.onSelectionGone = { [weak self] in self?.actionBar.hide() }
         applyAutoPop(Settings.autoPopEnabled)
     }
 
@@ -75,8 +76,8 @@ final class AppState {
             return
         }
 
-        // 2. Key：未配置 → 引导去设置。
-        guard let apiKey = Keychain.apiKey(), !apiKey.isEmpty else {
+        // 2. Key：未配置（当前厂商）→ 引导去设置。
+        guard let apiKey = Keychain.apiKey(for: Settings.provider), !apiKey.isEmpty else {
             promptMissingKey()
             return
         }
@@ -129,7 +130,9 @@ final class AppState {
         resultCard.model.state = .loading
         resultCard.show(anchor: anchor)
 
-        let client = GeminiClient(model: feature.model, apiKey: apiKey)
+        let provider = Settings.provider
+        let model = Settings.model(feature.tier)
+        let baseURL = Settings.baseURL(for: provider)
         let language = Settings.outputLanguage(for: feature)
         var system = Prompts.systemPrompt(for: feature)
         let user: String
@@ -145,8 +148,9 @@ final class AppState {
 
         Task {
             do {
-                let raw = try await client.generate(system: system, user: user,
-                                                    temperature: temperature, thinkingBudget: thinkingBudget)
+                let raw = try await AIClient.generate(provider: provider, apiKey: apiKey, model: model, baseURL: baseURL,
+                                                      system: system, user: user,
+                                                      temperature: temperature, thinkingBudget: thinkingBudget)
                 await MainActor.run {
                     let (main, subtext) = self.splitOutput(raw, feature: feature)
                     // 人在环中：只把结果写进剪贴板（不代发）。用户切回原 App 自行粘贴。
@@ -163,23 +167,24 @@ final class AppState {
         }
     }
 
-    /// 拆分「说人话」输出：正文 + 〔潜台词〕小字。其它功能原样返回。
-    /// 正文进剪贴板；潜台词只在卡片上以小字展示。
+    /// 拆分「说人话」输出：正文 + 注释（〔潜台词〕、〔黑话/缩写〕）。其它功能原样返回。
+    /// 只有正文进剪贴板；注释只在卡片上展示。
     private func splitOutput(_ raw: String, feature: Feature) -> (main: String, subtext: String?) {
         guard feature.producesSubtext, let range = raw.range(of: "〔潜台词〕") else {
             return (raw, nil)
         }
         let main = String(raw[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let sub = String(raw[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        return (main.isEmpty ? raw : main, sub.isEmpty ? nil : "潜台词：\(sub)")
+        // 从「〔潜台词〕」起到结尾都算注释（含随后的〔黑话/缩写〕），原样展示。
+        let sub = String(raw[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (main.isEmpty ? raw : main, sub.isEmpty ? nil : sub)
     }
 
     // MARK: - 引导
 
     private func promptMissingKey() {
         let alert = NSAlert()
-        alert.messageText = "还没有填 Gemini API Key"
-        alert.informativeText = "请打开「设置」，填入你的 Gemini 付费 API Key（勿用免费 AI Studio Key）。"
+        alert.messageText = "还没有填 API Key"
+        alert.informativeText = "请打开「设置」，选择模型厂商并填入对应的 API Key（\(Settings.provider.displayName)）。"
         alert.addButton(withTitle: "打开设置")
         alert.addButton(withTitle: "取消")
 

@@ -3,29 +3,30 @@ import ApplicationServices
 
 /// 全局选区监听（BUILD_SPEC §4「SelectionMonitor 触发策略」）。M1。
 ///
-/// 用**全局鼠标监听**判断"可能刚发生了一次选择"，然后决定是否弹悬浮工具条：
-/// - 左键 mouseUp 后，等一小会儿让选区状态稳定；
-/// - 若 AX 能读到非空选区（原生 App）→ 弹；
-/// - 若 AX 读不到（Slack/Electron）→ 用"拖拽距离 > 阈值"兜底判断可能选中了 → 弹。
+/// 用**全局鼠标监听**判断"可能刚发生了一次选择"，只在**候选手势**上进一步确认是否真的选中了文本：
+/// - 候选手势 = **拖拽超过阈值** 或 **双击/三击**（普通单击直接忽略，绝不弹）。
+/// - 候选手势后：先用 AX 读选区（原生 App，免剪贴板）；AX 读不到（Slack/Electron 等）
+///   再用 **Cmd+C 确认**（备份/还原剪贴板，非阻塞轮询、不冻结界面）。真读到文本才弹。
 ///
-/// 权限说明：全局**鼠标**监听不需要「输入监控」；只有全局键盘监听才要。AX 读选区用的是
-/// 已授予的「辅助功能」。所以本类不引入新的权限类型。
+/// 这样：非选中的拖动→确认为空→不弹；双击选词→确认到文本→弹。
 ///
-/// ⚠️ 本类**不**在 mouseUp 阶段模拟 Cmd+C（会破坏剪贴板）；真正抓取推迟到用户点动作时。
+/// 权限说明：全局**鼠标**监听不需要「输入监控」；AX 读选区 + Cmd+C 确认用的是已授予的「辅助功能」。
 @MainActor
 final class SelectionMonitor {
 
-    /// 判断"可能选中了文本" → 传出屏幕坐标（Cocoa，左下原点），供定位工具条。
+    /// 确实选中了文本（新选区）→ 传出屏幕坐标（Cocoa，左下原点），供定位/显示工具条。
     var onSelectionLikely: ((NSPoint) -> Void)?
-    /// 任意一次全局 mouseDown（点到别处）→ 供上层收起已显示的工具条。
-    var onMouseDown: (() -> Void)?
+    /// 选区已消失 → 供上层收起工具条。
+    var onSelectionGone: (() -> Void)?
+    /// 查询工具条当前是否可见（决定普通单击后要不要去确认选区）。
+    var isBarVisible: (() -> Bool)?
 
     private var downMonitor: Any?
     private var upMonitor: Any?
     private var downLocation: NSPoint = .zero
 
-    private let dragThreshold: CGFloat = 6      // 拖拽超过 6pt 视为可能在选择
-    private let settleDelay: TimeInterval = 0.12 // 让选区状态落地
+    private let dragThreshold: CGFloat = 5       // 超过 5pt 才算"拖拽"（滤掉单击抖动）
+    private let settleDelay: TimeInterval = 0.08 // 让选区状态落地
 
     var isRunning: Bool { downMonitor != nil || upMonitor != nil }
 
@@ -34,16 +35,13 @@ final class SelectionMonitor {
 
         downMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
             let loc = NSEvent.mouseLocation
-            Task { @MainActor in
-                guard let self else { return }
-                self.downLocation = loc
-                self.onMouseDown?()
-            }
+            Task { @MainActor in self?.downLocation = loc }
         }
 
-        upMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
+        upMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] event in
             let loc = NSEvent.mouseLocation
-            Task { @MainActor in self?.handleMouseUp(at: loc) }
+            let clickCount = event.clickCount
+            Task { @MainActor in self?.handleMouseUp(at: loc, clickCount: clickCount) }
         }
     }
 
@@ -54,13 +52,33 @@ final class SelectionMonitor {
         upMonitor = nil
     }
 
-    private func handleMouseUp(at up: NSPoint) {
+    private func handleMouseUp(at up: NSPoint, clickCount: Int) {
         let dragDistance = hypot(up.x - downLocation.x, up.y - downLocation.y)
+        let isCandidate = clickCount >= 2 || dragDistance > dragThreshold
+        let barVisible = isBarVisible?() ?? false
+
+        // 候选手势（可能是新选区）→ 判断是否要显示/重新定位。
+        // 或工具条正显示中的任意单击 → 判断选区是否还在（还在就保持，没了才收起）。
+        // 二者都不满足（工具条没显示时的普通单击）→ 什么都不做，避免无谓的剪贴板探测。
+        guard isCandidate || barVisible else { return }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) { [weak self] in
             guard let self else { return }
-            let hasAXSelection = AXSelection.hasNonEmptySelection()
-            if hasAXSelection || dragDistance > self.dragThreshold {
-                self.onSelectionLikely?(up)
+            // 1) AX 先试（原生 App，免剪贴板）。
+            if AXSelection.hasNonEmptySelection() {
+                if isCandidate { self.onSelectionLikely?(up) }   // 新选区才重新定位；否则保持不动
+                return
+            }
+            // 2) AX 读不到 → 用 Cmd+C 确认选区是否还在。
+            TextGrabber.detectSelection { [weak self] hasSelection in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if hasSelection {
+                        if isCandidate { self.onSelectionLikely?(up) }  // 新选区 → 显示/重定位；单击保持 → 不动
+                    } else {
+                        self.onSelectionGone?()                          // 选区没了 → 收起
+                    }
+                }
             }
         }
     }
